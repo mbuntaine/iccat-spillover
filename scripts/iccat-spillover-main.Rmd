@@ -101,65 +101,34 @@ iccat_df_final_edit <- iccat_df_final %>%
 
 ```{r analysis}
 
-
+#Regression 1.
+#Question: Does the catch of fleets that are catching one or more TAC stock increase or decrease relative to fleets that do not catch any TAC stocks?
+#Answer from the regression output: Fleets that catch one or more TAC stock increase their catch by 10.89 metric tonnes, relative to fleets that do not catch any TAC stocks.
 tac_reg1 <- lm(Qty_t ~ tac_any + YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
 
-tac_reg2 <- feols(Qty_t ~ tac_any | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
-print(tac_reg2)
+tac_reg1b <- feols(Qty_t ~ tac_any | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
+print(tac_reg1b)
 
-#Creating a column that is the total catch of all untreated stocks each year 
-#(the "-A" term in equation)
-iccat_df_final_test <- iccat_df_final_edit %>% 
-  group_by(YearC, FleetGear, tacr) %>% 
-  summarize(totalCatch_cr = sum(Qty_t)) %>% 
-  filter(tacr == 0) %>%
-  select(YearC, FleetGear, totalCatch_cr)
-
-iccat_df_final_reg <- iccat_df_final_edit %>% 
-  left_join(iccat_df_final_test, by=c("YearC", "FleetGear"))
-
-lm(Qty_t ~ tac_any*prop_tacC + YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
-
-
-```
-
-```{r running did}
-
-
-#Creating a column that is the total catch of all untreated stocks each year 
-#(the "-A" term in equation)
-iccat_df_final_test <- iccat_df_final_edit %>% 
-  group_by(YearC, FleetGear, tacr) %>% 
-  summarize(totalCatch_cr = sum(Qty_t)) %>% 
-  filter(tacr == 0) %>%
-  select(YearC, FleetGear, totalCatch_cr)
-
-#Creating a column that is proportion of treated stocks in total catch 
-#(the "A/A+-A" term)
+#Regression 2.
+#Creating a column that is proportion of TAC-treated stocks in total catch (prop_tacC).
 iccat_df_final_test2 <- iccat_df_final_edit %>% 
   group_by(YearC, FleetGear) %>% 
-  mutate(totalCatch = sum(Qty_t)) %>% #Total catch by gear and year
+  mutate(totalCatch = sum(Qty_t)) %>% #Total catch grouped by FleetGear and YearC
   filter(tacr == 1) %>% 
   group_by(YearC, FleetGear) %>% 
-  mutate(propCatch_tr = Qty_t/totalCatch) %>%
-  select(YearC, FleetGear, SpeciesStock,propCatch_tr)
-
-#Creating a proportion column (proportion of treated stock)
-iccat_df_final_did <- iccat_df_final_edit %>% 
-  left_join(iccat_df_final_test, by=c("YearC", "FleetGear")) %>% 
+  mutate(prop_tacC = Qty_t/totalCatch) %>%
+  select(YearC, FleetGear, SpeciesStock, prop_tacC)
+#Adding back into full dataset
+iccat_df_final_reg <- iccat_df_final_edit %>% 
   left_join(iccat_df_final_test2, by=c("YearC", "FleetGear", "SpeciesStock")) %>% 
-  group_by(YearC, FleetGear) %>% 
-  mutate(totalCatch = sum(Qty_t)) %>% 
-  group_by(tacr) %>% 
-  mutate(propCatch = Qty_t/totalCatch)
+  mutate(prop_tacC = if_else(is.na(prop_tacC), 0, prop_tacC))
 
-#Trying out the staggered DID, Mark's equation
-didreg2 <- lm(data=iccat_df_final_did, totalCatch_cr ~ FleetGear + YearC + (inter*propCatch_tr))
-summary(didreg2)
+#Question. Does the catch of fleets that are catching one or more TAC stock increase or decrease relative to fleets that do not catch any TAC stocks when we account for the relative proportion of TAC-treated stocks in the catch?
+#Answer from the regression: Got stuck here - the proportion variable (prop_tacC) was removed due to collinearity.
 
-#From Mark Meeting Thursday:
-#lm(Qty_t ~ tac_any + YearC + FleetGear + SpeciesStock, data = filter(data, tacr==0))
-#lm(Qty_t ~ tac_any*prop_tacC + YearC + FleetGear + SpeciesStock, data = filter(data, tacr==0))
+tac_reg2 <- lm(Qty_t ~ tac_any*prop_tacC + YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
+summary(tac_reg2)
 
-
+tac_reg2b <- feols(Qty_t ~ tac_any*prop_tacC | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
+print(tac_reg2b)
 ```
