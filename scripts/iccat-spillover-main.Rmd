@@ -1,0 +1,165 @@
+---
+title: "iccat-spillover-main"
+author: "Julia Lawson, UCSB"
+date: "4/27/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(here)
+library(tidyverse)
+library(ggpubr)
+library(kableExtra)
+library(reshape2)
+library(fixest)
+here()
+
+#Cleaning data
+iccat <- read.csv(here("data", "t1nc-ALL_20201218.csv"),
+                  stringsAsFactors = F) %>% 
+  unite(FleetGear, c(Fleet,GearGrp), sep=".", remove=FALSE)
+
+#Isolating fleets that catch TAC-managed species.
+iccat.fleets <- iccat %>% 
+  filter(Species == "BFT" | Species == "SWO" | Species == "ALB" | Species == "BET"| Species == "YFT" | Species == "WHM"| Species == "BUM" | Species == "BSH" | Species == "RSP") %>% 
+  group_by(Fleet, GearGrp) %>%
+  select(Fleet, GearGrp) %>% 
+  distinct(Fleet, GearGrp) %>% 
+  unite(FleetGear, c(Fleet,GearGrp), sep=".", remove=FALSE)
+
+#Removing general tuna and billfish categories (not identified beyond Genus).
+iccat.fil <- left_join(iccat.fleets, iccat, by=c("FleetGear","Fleet","GearGrp")) %>% 
+  group_by(FleetGear, ScieName) %>% 
+  filter(ScieName != "Thunnini" & ScieName != "Thunnus spp" & ScieName !="Istiophoridae" & ScieName != "Scomberomorus spp")
+
+#Adding TAC year dummy variable, based on year that TAC was implemented (yearTACimp)
+iccat_df <- iccat.fil %>%
+  mutate(yearTACimp = case_when(
+    Species == "BFT" & Stock == "ATW" ~ 1982,
+    Species == "SWO" & Stock == "ATN" ~ 1997,
+    Species == "SWO" & Stock == "ATS" ~ 1998,
+    Species == "ALB" & Stock == "ATS" ~ 1998,
+    Species == "BFT" & Stock == "ATE" ~ 1999,
+    Species == "ALB" & Stock == "ATN" ~ 2001,
+    Species == "BET" & Stock == "A+M" ~ 2005,
+    Species == "SBF" & Stock == "A+M" ~ 2006,
+    Species == "BUM" & Stock == "A+M" ~ 2013,
+    Species == "WHM" & Stock == "A+M" ~ 2013,
+    Species == "YFT" & Stock == "ATE" ~ 2013,
+    Species == "YFT" & Stock == "ATW" ~ 2013,
+    Species == "SWO" & Stock == "MED" ~ 2017,
+    Species == "BSH" & Stock == "ATN" ~ 2019,
+    Species == "BSH" & Stock == "ATS" ~ 2019)) %>%
+    mutate(yearTACimp = ifelse(is.na(yearTACimp), 
+                                   Inf, yearTACimp),
+           tacr = 1 * (YearC >= yearTACimp)) %>% 
+  mutate(tacever = case_when(
+    Species == "BFT" & Stock == "ATW" ~ 1,
+    Species == "SWO" & Stock == "ATN" ~ 1,
+    Species == "SWO" & Stock == "ATS" ~ 1,
+    Species == "ALB" & Stock == "ATS" ~ 1,
+    Species == "BFT" & Stock == "ATE" ~ 1,
+    Species == "ALB" & Stock == "ATN" ~ 1,
+    Species == "BET" & Stock == "A+M" ~ 1,
+    Species == "SBF" & Stock == "A+M" ~ 1,
+    Species == "BUM" & Stock == "A+M" ~ 1,
+    Species == "WHM" & Stock == "A+M" ~ 1,
+    Species == "YFT" & Stock == "ATE" ~ 1,
+    Species == "YFT" & Stock == "ATW" ~ 1,
+    Species == "SWO" & Stock == "MED" ~ 1,
+    Species == "BSH" & Stock == "ATN" ~ 1,
+    Species == "BSH" & Stock == "ATS" ~ 1)) %>%
+    mutate(tacever = ifelse(is.na(tacever), 0, tacever))
+
+#Accumulation of stocks over time, increase in reporting.
+iccat_1970 <- iccat_df %>% 
+  filter(YearC == 1970) %>% 
+  ungroup() %>% 
+  distinct(ScieName)
+iccat_2019 <- iccat_df %>% 
+  filter(YearC == 2019) %>% 
+  ungroup() %>% 
+  distinct(ScieName)
+incommon <- inner_join(iccat_2019, iccat_1970)
+
+#There are 63 stock groups that have been added between 1970 and 2019. I am removing them so that the numbers are not inflated as new stocks are reported over time. Only stocks that are "in common" in 1970 and 2019 will be retained. 
+
+iccat_df_final <- left_join(incommon, iccat_df, by="ScieName") %>% 
+  unite(SpeciesStock, c(Species,Stock), sep=".", remove=FALSE)
+
+#Creating a tac_any column, which shows in a given fleet year (grouped by FleetGear and YearC) if there are any stocks that are  catch regulated (1 if at least one TAC-regulated stock is in the catch, 0 if none)
+iccat_df_final_edit <- iccat_df_final %>%
+  group_by(YearC, FleetGear) %>% 
+  mutate(tac_any = case_when(any(tacr == 1) ~ 1, TRUE ~ 0))
+
+```
+
+
+```{r analysis}
+
+
+tac_reg1 <- lm(Qty_t ~ tac_any + YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
+
+tac_reg2 <- feols(Qty_t ~ tac_any | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
+print(tac_reg2)
+
+#Creating a column that is the total catch of all untreated stocks each year 
+#(the "-A" term in equation)
+iccat_df_final_test <- iccat_df_final_edit %>% 
+  group_by(YearC, FleetGear, tacr) %>% 
+  summarize(totalCatch_cr = sum(Qty_t)) %>% 
+  filter(tacr == 0) %>%
+  select(YearC, FleetGear, totalCatch_cr)
+
+iccat_df_final_reg <- iccat_df_final_edit %>% 
+  left_join(iccat_df_final_test, by=c("YearC", "FleetGear"))
+
+lm(Qty_t ~ tac_any*prop_tacC + YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
+
+
+```
+
+```{r running did}
+
+
+#Creating a column that is the total catch of all untreated stocks each year 
+#(the "-A" term in equation)
+iccat_df_final_test <- iccat_df_final_edit %>% 
+  group_by(YearC, FleetGear, tacr) %>% 
+  summarize(totalCatch_cr = sum(Qty_t)) %>% 
+  filter(tacr == 0) %>%
+  select(YearC, FleetGear, totalCatch_cr)
+
+#Creating a column that is proportion of treated stocks in total catch 
+#(the "A/A+-A" term)
+iccat_df_final_test2 <- iccat_df_final_edit %>% 
+  group_by(YearC, FleetGear) %>% 
+  mutate(totalCatch = sum(Qty_t)) %>% #Total catch by gear and year
+  filter(tacr == 1) %>% 
+  group_by(YearC, FleetGear) %>% 
+  mutate(propCatch_tr = Qty_t/totalCatch) %>%
+  select(YearC, FleetGear, SpeciesStock,propCatch_tr)
+
+#Creating a proportion column (proportion of treated stock)
+iccat_df_final_did <- iccat_df_final_edit %>% 
+  left_join(iccat_df_final_test, by=c("YearC", "FleetGear")) %>% 
+  left_join(iccat_df_final_test2, by=c("YearC", "FleetGear", "SpeciesStock")) %>% 
+  group_by(YearC, FleetGear) %>% 
+  mutate(totalCatch = sum(Qty_t)) %>% 
+  group_by(tacr) %>% 
+  mutate(propCatch = Qty_t/totalCatch)
+
+#Trying out the staggered DID, Mark's equation
+didreg2 <- lm(data=iccat_df_final_did, totalCatch_cr ~ FleetGear + YearC + (inter*propCatch_tr))
+summary(didreg2)
+
+#From Mark Meeting Thursday:
+#lm(Qty_t ~ tac_any + YearC + FleetGear + SpeciesStock, data = filter(data, tacr==0))
+#lm(Qty_t ~ tac_any*prop_tacC + YearC + FleetGear + SpeciesStock, data = filter(data, tacr==0))
+
+
+```
