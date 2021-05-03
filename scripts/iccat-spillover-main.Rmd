@@ -101,15 +101,18 @@ iccat_df_final_edit <- iccat_df_final %>%
 
 ```{r analysis}
 
-#Regression 1.
+#Regression 1. ----
 #Question: Does the catch of fleets that are catching one or more TAC stock increase or decrease relative to fleets that do not catch any TAC stocks?
 #Answer from the regression output: Fleets that catch one or more TAC stock increase their catch by 10.89 metric tonnes, relative to fleets that do not catch any TAC stocks.
-tac_reg1 <- lm(Qty_t ~ tac_any + YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
+
+# tac_reg1 <- lm(Qty_t ~ tac_any + as.factor(YearC) + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
+# summary(tac_reg1) #matches feols output
+#mb, 5.3.21: commenting out for speed, made YearC into a categorical FE
 
 tac_reg1b <- feols(Qty_t ~ tac_any | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
-print(tac_reg1b)
+coef_tab <- tac_reg1b$coeftable
 
-#Regression 2.
+#Regression 2. ----
 #Creating a column that is proportion of TAC-treated stocks in total catch (prop_tacC).
 iccat_df_final_test2 <- iccat_df_final_edit %>% 
   group_by(YearC, FleetGear) %>% 
