@@ -112,26 +112,50 @@ iccat_df_final_edit <- iccat_df_final %>%
 tac_reg1b <- feols(Qty_t ~ tac_any | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
 coef_tab <- tac_reg1b$coeftable
 
+tac_reg1c <- feols(Qty_t ~ tac_any | YearC^SpeciesStock + FleetGear, data = filter(iccat_df_final_edit, tacr==0)) #mb: adding year-by-speciesstock FEs
+coef_tab <- tac_reg1c$coeftable
+#result: positive, significant spillover when adding FEs that account for variations in stock-by-year
+
 #Regression 2. ----
 #Creating a column that is proportion of TAC-treated stocks in total catch (prop_tacC).
 iccat_df_final_test2 <- iccat_df_final_edit %>% 
   group_by(YearC, FleetGear) %>% 
-  mutate(totalCatch = sum(Qty_t)) %>% #Total catch grouped by FleetGear and YearC
-  filter(tacr == 1) %>% 
-  group_by(YearC, FleetGear) %>% 
-  mutate(prop_tacC = Qty_t/totalCatch) %>%
-  select(YearC, FleetGear, SpeciesStock, prop_tacC)
-#Adding back into full dataset
-iccat_df_final_reg <- iccat_df_final_edit %>% 
-  left_join(iccat_df_final_test2, by=c("YearC", "FleetGear", "SpeciesStock")) %>% 
-  mutate(prop_tacC = if_else(is.na(prop_tacC), 0, prop_tacC))
+  mutate(totalCatch = sum(Qty_t),
+         tac_catch = sum(Qty_t[tacr==1])) %>% #Total catch grouped by FleetGear and YearC
+  mutate(prop_tacC = Qty_t/totalCatch)
+
+hist(iccat_df_final_test2$prop_tacC)
+
+# mb: leaving some old code that is probably wrong  
+#   filter(tacr == 1) %>% 
+#   group_by(YearC, FleetGear) %>% 
+#   mutate(prop_tacC = Qty_t/totalCatch) %>%
+#   # select(YearC, FleetGear, SpeciesStock, prop_tacC)
+#   select(YearC, FleetGear, prop_tacC) #mb: should only merge on Year and FleetGear
+# 
+# hist(iccat_df_final_test2$prop_tacC)
+# 
+# #Adding back into full dataset
+# iccat_df_final_reg <- iccat_df_final_edit %>% 
+#   left_join(.,iccat_df_final_test2) #%>% 
+#   # mutate(prop_tacC = if_else(is.na(prop_tacC), 0, prop_tacC)) #unnecessary, zeros created by merge error in previous step
+# 
+# table(see$prop_tacC)
+
+iccat_df_final_reg <- iccat_df_final_test2
 
 #Question. Does the catch of fleets that are catching one or more TAC stock increase or decrease relative to fleets that do not catch any TAC stocks when we account for the relative proportion of TAC-treated stocks in the catch?
 #Answer from the regression: Got stuck here - the proportion variable (prop_tacC) was removed due to collinearity.
 
-tac_reg2 <- lm(Qty_t ~ tac_any*prop_tacC + YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
+tac_reg2 <- lm(Qty_t ~ tac_any*prop_tacC + as.factor(YearC) + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
 summary(tac_reg2)
 
 tac_reg2b <- feols(Qty_t ~ tac_any*prop_tacC | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
 print(tac_reg2b)
+
+tac_reg2c <- feols(Qty_t ~ prop_tacC | YearC^SpeciesStock + FleetGear, data = filter(iccat_df_final_reg, tacr==0))
+coef_tab <- tac_reg2c$coeftable
+
+#note: this isn't strictly right, because we probably want the dosage based on the pre-treatment period only
+
 ```
