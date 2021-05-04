@@ -91,10 +91,13 @@ incommon <- inner_join(iccat_2019, iccat_1970)
 iccat_df_final <- left_join(incommon, iccat_df, by="ScieName") %>% 
   unite(SpeciesStock, c(Species,Stock), sep=".", remove=FALSE)
 
-#Creating a tac_any column, which shows in a given fleet year (grouped by FleetGear and YearC) if there are any stocks that are  catch regulated (1 if at least one TAC-regulated stock is in the catch, 0 if none)
+#Creating a tac_any column, which shows in a given fleet year (grouped by FleetGear and YearC) if there are any stocks that are catch regulated (1 if at least one TAC-regulated stock is in the catch, 0 if none)
 iccat_df_final_edit <- iccat_df_final %>%
   group_by(YearC, FleetGear) %>% 
   mutate(tac_any = case_when(any(tacr == 1) ~ 1, TRUE ~ 0))
+
+iccat_df_final_edit_ex <- iccat_df_final_edit %>% 
+  filter(tacr==0)
 
 ```
 
@@ -103,7 +106,7 @@ iccat_df_final_edit <- iccat_df_final %>%
 
 #Regression 1. ----
 #Question: Does the catch of fleets that are catching one or more TAC stock increase or decrease relative to fleets that do not catch any TAC stocks?
-#Answer from the regression output: Fleets that catch one or more TAC stock increase their catch by 10.89 metric tonnes, relative to fleets that do not catch any TAC stocks.
+#Answer from the regression output: Fleets that catch one or more TAC stock increase their catch by 10.89 metric tons, relative to fleets that do not catch any TAC stocks.
 
 # tac_reg1 <- lm(Qty_t ~ tac_any + as.factor(YearC) + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
 # summary(tac_reg1) #matches feols output
@@ -115,6 +118,7 @@ coef_tab <- tac_reg1b$coeftable
 tac_reg1c <- feols(Qty_t ~ tac_any | YearC^SpeciesStock + FleetGear, data = filter(iccat_df_final_edit, tacr==0)) #mb: adding year-by-speciesstock FEs
 coef_tab <- tac_reg1c$coeftable
 #result: positive, significant spillover when adding FEs that account for variations in stock-by-year
+#JML: Answer from regression output: The total catch of non-TAC regulated stocks (SpeciesStock) increases by 113.40 metric tons for fleets (FleetGear) that catch at least one TAC managed stock (tac_any = 1), when SpeciesStock is interacted with year.
 
 #Regression 2. ----
 #Creating a column that is proportion of TAC-treated stocks in total catch (prop_tacC).
