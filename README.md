@@ -30,3 +30,5 @@ yearTACimp: The year that the TAC was implemented for each SpeciesStock where a 
 tacr: Dummy variable that turns 'on' in the year that the TAC was implemented for each SpeciesStock where a TAC exists.
 tacever: Dummy variable that is 1 if a SpeciesStock ever had a TAC at any point in time, and 0 if a SpeciesStock never had a TAC.
 tac_any: Dummy variable that is 1 if a FleetGear caught at least one TAC-managed stock in a given Year, and 0 if that FleetGear did not catch any TAC-mamanged stocks in a given year.
+
+##END##
