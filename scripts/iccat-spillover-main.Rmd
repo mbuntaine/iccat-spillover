@@ -96,9 +96,6 @@ iccat_df_final_edit <- iccat_df_final %>%
   group_by(YearC, FleetGear) %>% 
   mutate(tac_any = case_when(any(tacr == 1) ~ 1, TRUE ~ 0))
 
-iccat_df_final_edit_ex <- iccat_df_final_edit %>% 
-  filter(tacr==0)
-
 ```
 
 
