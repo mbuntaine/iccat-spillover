@@ -102,7 +102,7 @@ iccat_df_final_edit <- iccat_df_final %>%
 ```{r analysis}
 
 #Regression 1. ----
-#Question: Does the catch of fleets that are catching one or more TAC stock increase or decrease relative to fleets that do not catch any TAC stocks?
+#Question: Does the catch of non-TAC stocks in fleets that are catching one or more TAC stock increase or decrease relative to the catch of non-TAC stocks in fleets that do not catch any TAC stocks?
 #Answer from the regression output: Fleets that catch one or more TAC stock increase their catch by 10.89 metric tons, relative to fleets that do not catch any TAC stocks.
 
 # tac_reg1 <- lm(Qty_t ~ tac_any + as.factor(YearC) + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
@@ -111,21 +111,48 @@ iccat_df_final_edit <- iccat_df_final %>%
 
 tac_reg1b <- feols(Qty_t ~ tac_any | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_edit, tacr==0))
 coef_tab <- tac_reg1b$coeftable
+#This regression assumes that all stocks change in the same way over time (this is the YearC fixed effect on its own)
 
 tac_reg1c <- feols(Qty_t ~ tac_any | YearC^SpeciesStock + FleetGear, data = filter(iccat_df_final_edit, tacr==0)) #mb: adding year-by-speciesstock FEs
 coef_tab <- tac_reg1c$coeftable
 #result: positive, significant spillover when adding FEs that account for variations in stock-by-year
-#JML: Answer from regression output: The total catch of non-TAC regulated stocks (SpeciesStock) increases by 113.40 metric tons for fleets (FleetGear) that catch at least one TAC managed stock (tac_any = 1), when SpeciesStock is interacted with year.
+#JML: Answer from regression output: The total catch of non-TAC regulated stocks (SpeciesStock) increases by 113.40 metric tons for fleets (FleetGear) that catch at least one TAC managed stock (tac_any = 1), when SpeciesStock is interacted with year (when we allow for each stock to individually vary over time). 
 
 #Regression 2. ----
 #Creating a column that is proportion of TAC-treated stocks in total catch (prop_tacC).
-iccat_df_final_test2 <- iccat_df_final_edit %>% 
+#iccat_df_final_test2 <- iccat_df_final_edit %>% 
+#  group_by(YearC, FleetGear) %>% 
+#  mutate(totalCatch = sum(Qty_t),
+#         tac_catch = sum(Qty_t[tacr==1])) %>% #Total catch grouped by FleetGear and YearC
+#  mutate(prop_tacC = tac_catch/totalCatch) #mb: notice this is different
+
+#hist(iccat_df_final_test2$prop_tacC)
+#JML: commented out Mark's code (above) to try new code (below)
+
+#Creating a column that is the proportion of TAC-treated stocks in total catch in years prior to when the TAC went into effect (prop_tacCpre)
+#Proportion of TAC catch (tacever=1) in the years before the TAC went into effect (tacr=0) for each stock
+iccat_df_final_reg <- iccat_df_final_edit %>% 
   group_by(YearC, FleetGear) %>% 
   mutate(totalCatch = sum(Qty_t),
-         tac_catch = sum(Qty_t[tacr==1])) %>% #Total catch grouped by FleetGear and YearC
-  mutate(prop_tacC = tac_catch/totalCatch) #mb: notice this is different
+         pretac_catch = sum(Qty_t[tacever==1 & tacr==0])) %>% 
+  mutate(prop_pretac_catch = pretac_catch/totalCatch)
 
-hist(iccat_df_final_test2$prop_tacC)
+#Question. Does the proportion of TAC-treated stocks in a given fleet's total catch increase or decrease relative to the proportion of non-TAC treated stocks following TAC implementation?
+#Answer from the regression:  The proportion of stocks that would be subject to TAC restrictions (tacever=1, tacr=0) in a given fleet's total catch, were 316X higher in the years prior to TAC implementation (tacr=0) compared to the years after TAC restrictions were in place.
+
+# tac_reg2 <- lm(Qty_t ~ tac_any*prop_tacC + as.factor(YearC) + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
+# summary(tac_reg2)
+# 
+# tac_reg2b <- feols(Qty_t ~ tac_any*prop_tacC | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
+# # print(tac_reg2b)
+
+tac_reg2c <- feols(Qty_t ~ prop_pretac_catch | YearC^SpeciesStock + FleetGear, data = filter(iccat_df_final_reg, tacr==0))
+coef_tab <- tac_reg2c$coeftable
+
+#note: this isn't strictly right, because we probably want the dosage based on the pre-treatment period only
+
+```
+```{r old code}
 
 # mb: leaving some old code that is probably wrong  
 #   filter(tacr == 1) %>% 
@@ -143,20 +170,6 @@ hist(iccat_df_final_test2$prop_tacC)
 # 
 # table(see$prop_tacC)
 
-iccat_df_final_reg <- iccat_df_final_test2
-
-#Question. Does the catch of fleets that are catching one or more TAC stock increase or decrease relative to fleets that do not catch any TAC stocks when we account for the relative proportion of TAC-treated stocks in the catch?
-#Answer from the regression: Got stuck here - the proportion variable (prop_tacC) was removed due to collinearity.
-
-# tac_reg2 <- lm(Qty_t ~ tac_any*prop_tacC + as.factor(YearC) + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
-# summary(tac_reg2)
-# 
-# tac_reg2b <- feols(Qty_t ~ tac_any*prop_tacC | YearC + FleetGear + SpeciesStock, data = filter(iccat_df_final_reg, tacr==0))
-# # print(tac_reg2b)
-
-tac_reg2c <- feols(Qty_t ~ prop_tacC | YearC^SpeciesStock + FleetGear, data = filter(iccat_df_final_reg, tacr==0))
-coef_tab <- tac_reg2c$coeftable
-
-#note: this isn't strictly right, because we probably want the dosage based on the pre-treatment period only
+#iccat_df_final_reg <- iccat_df_final_test2
 
 ```
